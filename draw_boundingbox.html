@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bounding Box Tool</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        #imageWrapper {
+            margin-top: 20px;
+        }
+
+        #canvas {
+            border: 3px solid #ddd;
+            background-color: #fff;
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .controls select, .controls button {
+            padding: 12px 20px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            background-color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .controls select:hover, .controls button:hover {
+            background-color: #f0f0f0;
+            border-color: #bbb;
+        }
+
+        .controls button {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .controls button:hover {
+            background-color: #45a049;
+        }
+
+        #deleteBtn {
+            background-color: #f44336;
+        }
+
+        #deleteBtn:hover {
+            background-color: #e53935;
+        }
+
+        #nextBtn {
+            background-color: #2196F3;
+        }
+
+        #nextBtn:hover {
+            background-color: #1976D2;
+        }
+
+        label {
+            font-size: 1.1rem;
+            color: #4CAF50;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .file-input-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Bounding Box Tool</h1>
+
+    <div class="file-input-wrapper">
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+        <label for="folderInput">Chọn Thư Mục Ảnh</label>
+    </div>
+
+    <div class="controls">
+        <select id="labelSelector">
+            <option value="Aortic_enlargement">Aortic Enlargement</option>
+            <option value="Lung_Opacity">Lung Opacity</option>
+            <option value="Pleural_effusion">Pleural Effusion</option>
+            <option value="nofinding">No Finding</option>
+        </select>
+
+        <button id="saveBtn">Lưu Chú Thích</button>
+        <button id="deleteBtn">Xóa Bounding Box</button>
+        <button id="nextBtn">Tiếp Theo</button>
+    </div>
+
+    <div id="imageWrapper">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const folderInput = document.getElementById("folderInput");
+        const labelSelector = document.getElementById("labelSelector");
+        const saveBtn = document.getElementById("saveBtn");
+        const deleteBtn = document.getElementById("deleteBtn");
+        const nextBtn = document.getElementById("nextBtn");
+
+        let currentImage = null;
+        let images = [];
+        let currentImageIndex = 0;
+        let boundingBoxes = [];
+        let isDrawing = false;
+        let startX, startY, endX, endY;
+        let currentLabel = labelSelector.value;
+
+        // Load multiple images
+        folderInput.addEventListener("change", (e) => {
+            images = Array.from(e.target.files).filter(file => file.type.startsWith("image/"));
+            if (images.length > 0) {
+                loadImage(images[0]);
+            }
+        });
+
+        // Update label when selecting a new one
+        labelSelector.addEventListener("change", (e) => {
+            currentLabel = e.target.value;
+        });
+
+        // Load a single image
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Set canvas size to fit the image with scale up
+                    const scaleFactor = 2; // Scale factor to make image 3 times bigger
+                    const newWidth = img.width * scaleFactor;
+                    const newHeight = img.height * scaleFactor;
+
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+                    currentImage = img;
+                    boundingBoxes = []; // Reset bounding boxes for the new image
+                    redrawCanvas();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Redraw the canvas with the current image and bounding boxes
+        function redrawCanvas() {
+            if (currentImage) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+                redrawBoundingBoxes();
+            }
+        }
+
+        // Redraw all bounding boxes
+        function redrawBoundingBoxes() {
+            boundingBoxes.forEach((box) => {
+                ctx.beginPath();
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 2;
+                ctx.rect(box.x, box.y, box.width, box.height);
+                ctx.stroke();
+                ctx.font = "16px Arial";
+                ctx.fillStyle = "red";
+                ctx.fillText(box.label, box.x + 5, box.y + 20);
+            });
+        }
+
+        // Handle mouse down event
+        canvas.addEventListener("mousedown", (e) => {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        });
+
+        // Handle mouse move event
+        canvas.addEventListener("mousemove", (e) => {
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Redraw canvas and show the temporary bounding box
+            redrawCanvas();
+            ctx.beginPath();
+            ctx.strokeStyle = "blue";
+            ctx.lineWidth = 2;
+            ctx.rect(startX, startY, mouseX - startX, mouseY - startY);
+            ctx.stroke();
+        });
+
+        // Handle mouse up event
+        canvas.addEventListener("mouseup", (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            const rect = canvas.getBoundingClientRect();
+            endX = e.clientX - rect.left;
+            endY = e.clientY - rect.top;
+
+            const box = {
+                label: currentLabel,
+                x: Math.min(startX, endX),
+                y: Math.min(startY, endY),
+                width: Math.abs(endX - startX),
+                height: Math.abs(endY - startY),
+            };
+            boundingBoxes.push(box);
+            redrawCanvas();
+        });
+
+        // Save annotations to a YOLO format text file
+        saveBtn.addEventListener("click", () => {
+            if (!currentImage) return;
+
+            const imageName = images[currentImageIndex].name.replace(/\.[^/.]+$/, "");
+            const annotation = boundingBoxes.map((box) => {
+                const x_center = (box.x + box.width / 2) / canvas.width;
+                const y_center = (box.y + box.height / 2) / canvas.height;
+                const width = box.width / canvas.width;
+                const height = box.height / canvas.height;
+                const classId = ["Aortic_enlargement", "Lung_Opacity", "Pleural_effusion", "nofinding"].indexOf(box.label);
+
+                return `${classId} ${x_center} ${y_center} ${width} ${height}`;
+            }).join("\n");
+
+            const blob = new Blob([annotation], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${imageName}.txt`;
+            link.click();
+        });
+
+        // Delete last bounding box
+        deleteBtn.addEventListener("click", () => {
+            boundingBoxes.pop();
+            redrawCanvas();
+        });
+
+        // Load next image
+        nextBtn.addEventListener("click", () => {
+            currentImageIndex = (currentImageIndex + 1) % images.length;
+            loadImage(images[currentImageIndex]);
+        });
+    </script>
+</body>
+</html>
